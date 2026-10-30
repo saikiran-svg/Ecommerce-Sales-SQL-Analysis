@@ -220,3 +220,207 @@ GROUP BY o.order_id
 ORDER BY order_revenue DESC
 LIMIT 1;
 
+
+-- Q8. Top 3 customers by Delivered-order revenue
+SELECT
+    c.customer_id,
+    c.customer_name,
+    SUM(oi.quantity * oi.unit_price) AS total_revenue
+FROM customers c
+JOIN orders o
+    ON o.customer_id = c.customer_id
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY c.customer_id, c.customer_name
+ORDER BY total_revenue DESC
+LIMIT 3;
+
+
+-- Q9. Customers who have never placed an order
+SELECT
+    c.customer_id,
+    c.customer_name
+FROM customers c
+LEFT JOIN orders o
+    ON c.customer_id = o.customer_id
+WHERE o.order_id IS NULL;
+
+
+-- Q10. Highest-priced product in each category
+-- ROW_NUMBER returns one product per category, including when prices tie.
+SELECT
+    category,
+    product_name,
+    unit_price
+FROM (
+    SELECT
+        category,
+        product_name,
+        unit_price,
+        ROW_NUMBER() OVER (
+            PARTITION BY category
+            ORDER BY unit_price DESC, product_name
+        ) AS rn
+    FROM products
+) AS ranked_products
+WHERE rn = 1;
+
+
+-- Q11. Second-highest DISTINCT product price
+SELECT
+    product_name,
+    unit_price
+FROM (
+    SELECT
+        product_name,
+        unit_price,
+        DENSE_RANK() OVER (ORDER BY unit_price DESC) AS price_rank
+    FROM products
+) AS ranked_prices
+WHERE price_rank = 2;-- Q12. Total Delivered-order revenue for each customer using a CTE
+WITH customer_sales AS (
+    SELECT
+        c.customer_id,
+        c.customer_name,
+        SUM(oi.quantity * oi.unit_price) AS total_revenue
+    FROM customers c
+    JOIN orders o
+        ON c.customer_id = o.customer_id
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    WHERE o.order_status = 'Delivered'
+    GROUP BY c.customer_id, c.customer_name
+)
+SELECT *
+FROM customer_sales
+ORDER BY total_revenue DESC;
+
+
+-- Q13. Rank products by total quantity sold
+SELECT
+    p.product_name,
+    SUM(oi.quantity) AS total_sold,
+    RANK() OVER (
+        ORDER BY SUM(oi.quantity) DESC
+    ) AS product_rank
+FROM products p
+JOIN order_items oi
+    ON p.product_id = oi.product_id
+JOIN orders o
+    ON oi.order_id = o.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY p.product_id, p.product_name;
+
+
+-- Q14. Each product's percentage contribution to Delivered revenue
+SELECT
+    p.product_name,
+    SUM(oi.quantity * oi.unit_price) AS product_revenue,
+    ROUND(
+        100.0 * SUM(oi.quantity * oi.unit_price)
+        / SUM(SUM(oi.quantity * oi.unit_price)) OVER (),
+        2
+    ) AS revenue_percentage
+FROM products p
+JOIN order_items oi
+    ON p.product_id = oi.product_id
+JOIN orders o
+    ON oi.order_id = o.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY p.product_id, p.product_name
+ORDER BY revenue_percentage DESC;
+
+
+
+-- Q15. Monthly Delivered-order revenue
+SELECT
+    DATE_FORMAT(o.order_date, '%Y-%m') AS sales_month,
+    SUM(oi.quantity * oi.unit_price) AS monthly_revenue
+FROM orders o
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY DATE_FORMAT(o.order_date, '%Y-%m')
+ORDER BY sales_month;
+
+
+-- Q16. Number of customers in each city
+SELECT
+    city,
+    COUNT(customer_id) AS total_customers
+FROM customers
+GROUP BY city
+ORDER BY total_customers DESC, city;
+
+
+-- Q17. Most frequently purchased product by quantity
+SELECT
+    p.product_name,
+    SUM(oi.quantity) AS total_quantity_sold
+FROM products p
+JOIN order_items oi
+    ON p.product_id = oi.product_id
+JOIN orders o
+    ON oi.order_id = o.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY p.product_id, p.product_name
+ORDER BY total_quantity_sold DESC, p.product_name
+LIMIT 1;
+
+
+-- Q18. Customers spending above the average customer spending
+-- Average is calculated across customers with at least one Delivered order.
+WITH customer_spending AS (
+    SELECT
+        c.customer_id,
+        c.customer_name,
+        SUM(oi.quantity * oi.unit_price) AS total_spending
+    FROM customers c
+    JOIN orders o
+        ON c.customer_id = o.customer_id
+    JOIN order_items oi
+        ON o.order_id = oi.order_id
+    WHERE o.order_status = 'Delivered'
+    GROUP BY c.customer_id, c.customer_name
+)
+SELECT *
+FROM customer_spending
+WHERE total_spending > (
+    SELECT AVG(total_spending)
+    FROM customer_spending
+)
+ORDER BY total_spending DESC;
+
+
+-- Q19. Total revenue and units sold for each category
+SELECT
+    p.category,
+    SUM(oi.quantity) AS total_units_sold,
+    SUM(oi.quantity * oi.unit_price) AS total_revenue
+FROM products p
+JOIN order_items oi
+    ON p.product_id = oi.product_id
+JOIN orders o
+    ON oi.order_id = o.order_id
+WHERE o.order_status = 'Delivered'
+GROUP BY p.category
+ORDER BY total_revenue DESC;
+
+
+-- Q20. Overall business performance summary for Delivered orders
+SELECT
+    COUNT(DISTINCT o.order_id) AS total_delivered_orders,
+    COUNT(DISTINCT o.customer_id) AS unique_customers,
+    SUM(oi.quantity) AS total_units_sold,
+    SUM(oi.quantity * oi.unit_price) AS total_revenue,
+    ROUND(
+        SUM(oi.quantity * oi.unit_price)
+        / COUNT(DISTINCT o.order_id),
+        2
+    ) AS average_order_value
+FROM orders o
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+WHERE o.order_status = 'Delivered';
+
